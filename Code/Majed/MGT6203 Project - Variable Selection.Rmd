@@ -1,0 +1,195 @@
+---
+title: "MGT6203 Project - Variable Selection"
+author: "Majed AlOtaibi"
+date: "7/17/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Variable Selection Part
+
+In this part of the analysis, will focus on variable selection by applying Elastic Net on crash dataset to perform variable selection:
+
+## Read the dataset
+
+```{r}
+# Clear variables in memory
+rm(list=ls())
+
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(glmnet)
+
+
+# Reading the data
+data <- read.csv("~/Majed AlOtaibi/University/Master/Courses/MGT6203/Project/Data/df_comb.csv", header=TRUE)
+str(data)
+```
+
+## Crash Data Varibale processing
+
+
+```{r}
+data$X <- NULL
+data$COLLISION_ID <- NULL
+data$CRASH.DATETIME <- NULL
+data$LATITUDE <- NULL
+data$LONGITUDE <- NULL
+data$ZIPCODE <- NULL
+data$NUMBER.OF.PERSONS.INJURED <- NULL
+data$NUMBER.OF.PERSONS.KILLED <- NULL
+data$NUMBER.OF.PEDESTRIANS.INJURED <- NULL
+data$NUMBER.OF.PEDESTRIANS.KILLED <- NULL
+data$NUMBER.OF.CYCLIST.INJURED <- NULL
+data$NUMBER.OF.CYCLIST.KILLED <- NULL
+data$NUMBER.OF.MOTORIST.INJURED <- NULL
+data$NUMBER.OF.MOTORIST.KILLED <- NULL
+
+#data$HOUR <- unlist(strsplit(data$CRASH.TIME,":"))[1]
+
+data$CONTRIBUTING.FACTOR.VEHICLE.3 <- NULL
+data$CONTRIBUTING.FACTOR.VEHICLE.4 <- NULL
+data$CONTRIBUTING.FACTOR.VEHICLE.5 <- NULL
+data$CRASH.DATE <- NULL
+data$CRASH.TIME <- NULL
+
+data$Veh_1 <- NULL
+data$Veh_2 <- NULL
+data$Veh_3 <- NULL
+data$Veh_4 <- NULL
+data$Veh_5 <- NULL
+data$VEHICLE.TYPE.CODE.1 <- NULL
+data$VEHICLE.TYPE.CODE.2 <- NULL
+
+
+# 66 level factor
+data$STATE_REGISTRATION.x <- as.factor(data$STATE_REGISTRATION.x)
+data$STATE_REGISTRATION.y <- as.factor(data$STATE_REGISTRATION.y)
+data$DRIVER_LICENSE_JURISDICTION.x <- as.factor(data$DRIVER_LICENSE_JURISDICTION.x)
+data$DRIVER_LICENSE_JURISDICTION.y <- as.factor(data$DRIVER_LICENSE_JURISDICTION.y)
+
+# 2396 level factor
+data$VEHICLE_MAKE.x <- as.factor(data$VEHICLE_MAKE.x)
+# 2406 level factor
+data$VEHICLE_MAKE.y <- as.factor(data$VEHICLE_MAKE.y)
+
+# 160 level factor
+data$VEHICLE_YEAR.x <- as.factor(data$VEHICLE_YEAR.x)
+# 158 level factor
+data$VEHICLE_YEAR.y <- as.factor(data$VEHICLE_YEAR.y)
+
+# 3 level factor
+data$DRIVER_SEX.x <- as.factor(data$DRIVER_SEX.x)
+data$DRIVER_SEX.y <- as.factor(data$DRIVER_SEX.y)
+
+# 3 level factor
+data$DRIVER_LICENSE_STATUS.x <- as.factor(data$DRIVER_LICENSE_STATUS.x)
+data$DRIVER_LICENSE_STATUS.y <- as.factor(data$DRIVER_LICENSE_STATUS.y)
+
+# 57 level factor
+data$CONTRIBUTING.FACTOR.VEHICLE.1 <- as.factor(data$CONTRIBUTING.FACTOR.VEHICLE.1)
+data$CONTRIBUTING.FACTOR.VEHICLE.2 <- as.factor(data$CONTRIBUTING.FACTOR.VEHICLE.2)
+
+# 264 level factor
+data$VT1 <- as.factor(data$VT1)
+# 323 level factor
+data$VT2 <- as.factor(data$VT2)
+
+# 10 level factor
+data$CRASH.YEAR <- as.factor(data$CRASH.YEAR)
+
+
+data$PERSON_AGE.x <- as.integer(data$PERSON_AGE.x)
+data$PERSON_AGE.y  <- as.integer(data$PERSON_AGE.y )
+data$CAR_AGE.x <- as.integer(data$CAR_AGE.x)
+data$CAR_AGE.y <- as.integer(data$CAR_AGE.y)
+data$CAR_AGE_SUM <- as.integer(data$CAR_AGE_SUM)
+
+
+data <-  data %>% 
+           mutate(age_group.x = case_when(
+                        PERSON_AGE.x < 1 ~ "Unknown",
+                        PERSON_AGE.x >= 1 & PERSON_AGE.x < 10 ~ "[1-10)",
+                        PERSON_AGE.x >= 10 & PERSON_AGE.x < 20 ~ "[10-20)",
+                        PERSON_AGE.x >= 20 & PERSON_AGE.x < 30 ~ "[20-30)",
+                        PERSON_AGE.x >= 30 & PERSON_AGE.x < 40 ~ "[30-40)",
+                        PERSON_AGE.x >= 40 & PERSON_AGE.x < 50 ~ "[40-50)",
+                        PERSON_AGE.x >= 50 & PERSON_AGE.x < 65 ~ "[50-65)",
+                        PERSON_AGE.x >= 65 & PERSON_AGE.x < 120 ~ "[65+)",
+                        PERSON_AGE.x > 120 ~ "Unknown"))
+
+data <-  data %>% 
+           mutate(age_group.y = case_when(
+                        PERSON_AGE.y < 1 ~ "Unknown",
+                        PERSON_AGE.y >= 1 & PERSON_AGE.y < 10 ~ "[1-10)",
+                        PERSON_AGE.y >= 10 & PERSON_AGE.y < 20 ~ "[10-20)",
+                        PERSON_AGE.y >= 20 & PERSON_AGE.y < 30 ~ "[20-30)",
+                        PERSON_AGE.y >= 30 & PERSON_AGE.y < 40 ~ "[30-40)",
+                        PERSON_AGE.y >= 40 & PERSON_AGE.y < 50 ~ "[40-50)",
+                        PERSON_AGE.y >= 50 & PERSON_AGE.y < 65 ~ "[50-65)",
+                        PERSON_AGE.y >= 65 & PERSON_AGE.y < 120 ~ "[65+)",
+                        PERSON_AGE.y > 120 ~ "Unknown"))
+
+
+data$age_group.x <- as.factor(data$age_group.x)
+data$age_group.y <- as.factor(data$age_group.y)
+
+data$PERSON_AGE.x <- NULL
+data$PERSON_AGE.y <- NULL
+head(data)
+data <- na.omit(data)
+
+```
+
+## Split the data
+split the dataset into a train and test set in a 80:20 ratio
+```{r}
+# Set a seed for reproducibility
+set.seed(100)
+# Split data for training and testing
+testRows = sample(nrow(data),0.2*nrow(data))
+testData = data[testRows, ]
+trainData = data[-testRows, ]
+#str(trainData)
+```
+
+
+# Elastic Net 
+
+## 1. Injured
+```{r}
+set.seed(100)
+#STATE_REGISTRATION.x
+#STATE_REGISTRATION.y
+#VEHICLE_MAKE.x
+#VEHICLE_MAKE.y
+#VT1
+#VT2
+#VEHICLE_YEAR.x
+#VEHICLE_YEAR.y
+
+#options(na.action="na.fail")
+xfactors <- model.matrix(Injury ~ DRIVER_SEX.x+DRIVER_LICENSE_STATUS.x+DRIVER_LICENSE_JURISDICTION.x+DRIVER_SEX.y+DRIVER_LICENSE_STATUS.y+DRIVER_LICENSE_JURISDICTION.y +CONTRIBUTING.FACTOR.VEHICLE.1+CONTRIBUTING.FACTOR.VEHICLE.2+CRASH.YEAR+age_group.x+age_group.y, data=trainData)[, -1]
+
+x <- as.matrix(data.frame(xfactors))
+
+enetmodel.cv <- cv.glmnet(x, trainData$Injury, family = "binomial", alpha = 0.5, nfolds = 10)
+enetmodel.cv$lambda.min
+set.seed(100)
+enetmodel <- glmnet(x, trainData$Injury, family = "binomial", alpha=0.5, nlambda=100)
+coef(enetmodel, enetmodel.cv$lambda.min)
+
+
+testFactors <- model.matrix(Injury ~ DRIVER_SEX.x+DRIVER_LICENSE_STATUS.x+DRIVER_LICENSE_JURISDICTION.x+DRIVER_SEX.y+DRIVER_LICENSE_STATUS.y+DRIVER_LICENSE_JURISDICTION.y +CONTRIBUTING.FACTOR.VEHICLE.1+CONTRIBUTING.FACTOR.VEHICLE.2+CRASH.YEAR+age_group.x+age_group.y, data=testData)[, -1]
+
+testData <- as.matrix(data.frame(testFactors))
+
+pred_enetmodel <- predict(enetmodel, testData, s=enetmodel.cv$lambda.min)[,1]
+head(pred_enetmodel)
+```
+

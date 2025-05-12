@@ -1,0 +1,216 @@
+---
+title: "Crashes Data Analysis"
+output: html_document
+date: "2023-07-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+The current model
+
+```{r work}
+
+library(pROC)
+
+gooddata3 <- read.csv("~/Desktop/gooddata3.csv")
+
+model4 <- glm(Injury ~ DRIVER_SEX.y + DRIVER_SEX.x + DRIVER_SEX.x:DRIVER_SEX.y + young.y + young.x + licensed.x + licensed.y + instate_lic.x + instate_lic.y + instate_lic.x:instate_lic.y+ log(VW.x) + log(VW.y) + safe.x + safe.y + safe.x:safe.y,family=binomial(link='logit'),data=gooddata3)
+
+summary(model4)
+
+gooddata3$Injury.Pred <- predict(model4,newdata=gooddata3,type='response')
+
+roc.test <- roc(gooddata3$Injury, gooddata3$Injury.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+
+```
+
+Background: 
+
+From the original three datasets, the following characteristics were selected for:
+
+Complete data for all variables
+Only look at collisions involving two vehicles (vehicle 1 is denoted as .x, and vehicle 2 is denoted as .y)
+Only consider vehicles where the only occupant is the driver (that way we avoid the confounding effect that vehicles with multiple passengers are more likely to have injuries)
+Look at collisions involving vehicles belonging to a major class (e.g. no horse-drawn carriages)
+Ignore motorcycles/bicycles since they are so prone to injury/death that they overwhelm the rest of the findings
+
+The Variables: 
+
+Driver Sex
+
+```{r Driver Sex}
+
+model_sex <- glm(Injury ~ DRIVER_SEX.y + DRIVER_SEX.x + DRIVER_SEX.x:DRIVER_SEX.y,family=binomial(link='logit'),data=gooddata3)
+
+summary(model_sex)
+
+gooddata3$Injury.Pred <- predict(model_sex,newdata=gooddata3,type='response')
+
+roc.test <- roc(gooddata3$Injury, gooddata3$Injury.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Sex is predictive at a high degree of confidence. Males have a lower risk of injury than females, and the effect is the same for both drivers in the crash. It should be mentioned that this does not imply that women are worse or more dangerous drivers, just that they are more likely to suffer injury in the event of a collision. (Or, rather, that an injury is more likely to occur in a collision involving a woman driver or two women drivers). 
+
+Driver Age
+
+```{r Age}
+
+model_age <- glm(Injury ~ PERSON_AGE.y + PERSON_AGE.x + PERSON_AGE.y:PERSON_AGE.x,family=binomial(link='logit'),data=gooddata3)
+
+summary(model_age)
+
+gooddata3$Injury.Pred <- predict(model_age,newdata=gooddata3,type='response')
+
+roc.test <- roc(gooddata3$Injury, gooddata3$Injury.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+
+```
+
+Age is significant, but it isn't clear what the effects are. My suspicion is that the effect of age is mostly limited to very young (rash and inexperienced) drivers and very old (possibly feeble) drivers. I'm going to try to create categorical variables to see if that improves the fit. 
+
+Driver Age2
+
+```{r Age2}
+
+gooddata3$young.y <- 0
+gooddata3$young.x <- 0
+gooddata3$young.y[(gooddata3$PERSON_AGE.y <= 25)] <- 1
+gooddata3$young.x[(gooddata3$PERSON_AGE.x <= 25)] <- 1
+
+gooddata3$old.y <- 0
+gooddata3$old.x <- 0
+gooddata3$old.y[(gooddata3$PERSON_AGE.y >= 75)] <- 1
+gooddata3$old.x[(gooddata3$PERSON_AGE.x >= 75)] <- 1
+
+
+model_age2 <- glm(Injury ~ young.y + young.x + young.y:young.x + old.y + old.x + old.y:old.x ,family=binomial(link='logit'),data=gooddata3)
+
+summary(model_age2)
+
+gooddata3$Injury.Pred <- predict(model_age2,newdata=gooddata3,type='response')
+
+roc.test <- roc(gooddata3$Injury, gooddata3$Injury.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+The variable representing older drivers is not significant. Perhaps older people are not as feeble as I thought, or their more-experienced driving makes up for it? I am going to take that that variable out of the model. 
+
+```{r Age3}
+
+model_age3 <- glm(Injury ~ young.y + young.x,family=binomial(link='logit'),data=gooddata3)
+
+summary(model_age3)
+
+gooddata3$Injury.Pred <- predict(model_age3,newdata=gooddata3,type='response')
+
+roc.test <- roc(gooddata3$Injury, gooddata3$Injury.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+The AUC is higher including the continuous variable rather than the categorical variable. I will keep this in mind later when combining variables. 
+
+Licensing
+
+```{r Licensing}
+
+
+gooddata3$licensed.x <- 0
+gooddata3$licensed.y <- 0
+gooddata3$licensed.y[(gooddata3$DRIVER_LICENSE_STATUS.y == 'Licensed')] <- 1
+gooddata3$licensed.x[(gooddata3$DRIVER_LICENSE_STATUS.x == 'Licensed')] <- 1
+
+
+model_lic <- glm(Injury ~ licensed.x + licensed.y + licensed.x:licensed.y,family=binomial(link='logit'),data=gooddata3)
+
+summary(model_lic)
+
+gooddata3$Injury.Pred <- predict(model_lic,newdata=gooddata3,type='response')
+
+roc.test <- roc(gooddata3$Injury, gooddata3$Injury.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Interesting. Licensing is barely significant when included as a variable by itself, but (spoiler) it becomes very relevant when included in the multi-variable model. This could be because there are so few collisions that involved unlicensed or permitted drivers. I'll come back to this later. 
+
+In-state Licensing
+
+```{r Instate Licensing}
+
+gooddata3$instate_lic.x <- 0
+gooddata3$instate_lic.y <- 0
+gooddata3$instate_lic.y[(gooddata3$DRIVER_LICENSE_JURISDICTION.y == 'NY')] <- 1
+gooddata3$instate_lic.x[(gooddata3$DRIVER_LICENSE_JURISDICTION.x == 'NY')] <- 1
+
+model_instate <- glm(Injury ~ instate_lic.x + instate_lic.y + instate_lic.x:instate_lic.y,family=binomial(link='logit'),data=gooddata3)
+
+summary(model_instate)
+
+gooddata3$Injury.Pred <- predict(model_instate,newdata=gooddata3,type='response')
+
+roc.test <- roc(gooddata3$Injury, gooddata3$Injury.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Very odd finding that in-state drivers are actually slightly *more* likely to be injured in an accident than out-of-state drivers. One possible explanation is that people in NYC don't actually drive that much. The interaction term is also strange, indicating that the risk of injury is lowered when there is a collision between two in-state drivers. No idea what's going on here - let's keep this in mind for the variable consolidation step. 
+
+Car Safety
+
+```{r Car Make}
+
+model_car_make1 <- glm(Injury ~ VM.x,family=binomial(link='logit'),data=gooddata3)
+model_car_make2 <- glm(Injury ~ VM.y,family=binomial(link='logit'),data=gooddata3)
+
+summary(model_car_make1)
+summary(model_car_make2)
+
+
+#gooddata3$Injury.Pred <- predict(model_car_make,newdata=gooddata3,type='response')
+
+#roc.test <- roc(gooddata3$Injury, gooddata3$Injury.Pred )
+
+#plot(roc.test, print.auc = TRUE)
+
+```
+
+As you can tell from the summary data, some car makes appear to be less frequently associated with injuries than others. In the VM.x dataset, the makes that are statistically-significantly associated with injury reduction are toyota, volvo, audi, ford, gmc, lincoln, lexus (close enough), and subaru. I included Land Rover initially for some weird reason initially but I think I'm going to take it out on the second run. These cars are also significantly safer in the VM.y field, indicating that the relationship is unlikely due to overfitting. It is also worth noting that makes that are made by the same company (e.g. Toyota/Lexus, Honda/Acura, Nissan/Infiniti, Dodge/Chrysler, etc.) tend to have coefficients pointing in the same direction. 
+
+```{r Car Make 2}
+
+safe_cars_final <- c("toyt", "volv", "ford", "audi", "gmc", "linc", "lexs", "suba")  
+
+gooddata3$safe.x <- 0
+gooddata3$safe.y <- 0
+gooddata3$safe.x[(gooddata3$VM.x %in% safe_cars_final)] <- 1
+gooddata3$safe.y[(gooddata3$VM.y %in% safe_cars_final)] <- 1
+
+
+model_car_safe <- glm(Injury ~ safe.x + safe.y + safe.x:safe.y,family=binomial(link='logit'),data=gooddata3)
+
+summary(model_car_safe)
+
+gooddata3$Injury.Pred <- predict(model_car_safe,newdata=gooddata3,type='response')
+
+roc.test <- roc(gooddata3$Injury, gooddata3$Injury.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```

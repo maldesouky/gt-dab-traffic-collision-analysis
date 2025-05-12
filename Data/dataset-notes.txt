@@ -1,0 +1,24 @@
+NOTES:
+======
+- Data sets can be downloaded directly from links included in the References section in the final report.
+- Most of the data sets included here are samples from original data sets to avoid uploading large files to GitHub.
+
+DATASET LINKS:
+==============
+NYC OpenData (2023, June). Motor Vehicle Collisions - Crashes. City of New York.
+https://catalog.data.gov/dataset/motor-vehicle-collisions-crashes
+
+NYC OpenData (2023, June). Motor Vehicle Collisions - Vehicles. City of New York.
+https://catalog.data.gov/dataset/motor-vehicle-collisions-vehicles
+
+NYC OpenData (2023, June). Motor Vehicle Collisions - Persons. City of New York.
+https://catalog.data.gov/dataset/motor-vehicle-collisions-person
+
+NYC OpenData (2023, June). Zip Code Boundaries. City of New York.
+https://catalog.data.gov/dataset/zip-code-boundaries
+
+National Oceanic and Atmospheric Administration, NOAA Solar Calculator.
+https://gml.noaa.gov/grad/solcalc/
+
+Visual Crossing Weather API Documentation.
+https://www.visualcrossing.com/resources/documentation/weather-api/timeline-weather-api/

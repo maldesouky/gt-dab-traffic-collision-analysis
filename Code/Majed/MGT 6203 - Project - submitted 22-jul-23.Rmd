@@ -1,0 +1,286 @@
+---
+title: "MGT 6203 - Project"
+author: "Team 10"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+date: "`r format(Sys.time(), '%c %Z')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Road traffic crashes are a leading cause of death in many countries, especially those with people living in high-population density environments. In this project, due to data availability issues, we will be focusing on the city of New York City in the United States
+
+## Data Description & Pre-processing
+
+This work is a compiled result of cleaning and using the following data sets:
+1. Crashes dataset.
+2. Vehicles dataset
+3. Persons dataset
+4. New York city spatial dataset
+5. New York city weather dataset
+
+The cleaned dataset has the following columns:
+
+1. **COLLISION_ID** Auto generated ID for the crash
+2. **CRASH.DATETIME** Crash Date and Time
+3. **TIME_OF_DAY** Time of Day (morning, afternoon, or evening)
+4. **STATE** All the data set records in NY
+5. **PO_NAME** Postal Name (48 unique values in NY)
+6. **ZIPCODE** ZIP Code (193 unique values in NY)
+7. **LATITUDE** Latitude of the crash
+8. **LONGITUDE** Longitude of the crash
+9. **NUMBER.OF.PERSONS.INJURED** Number of Persons Injured in the crash
+10. **NUMBER.OF.PERSONS.KILLED** Number of Persons Killed in the crash
+11. **NUMBER.OF.PEDESTRIANS.INJURED** Number of Pedestrians Injured in the crash
+12. **NUMBER.OF.PEDESTRIANS.KILLED** Number of Pedestrians Killed in the crash
+13. **NUMBER.OF.CYCLIST.INJURED** Number of Cyclist Injured in the crash
+14. **NUMBER.OF.CYCLIST.KILLED** Number of Cyclist Killed in the crash
+15. **NUMBER.OF.MOTORIST.INJURED** Number of Motorist Injured in the crash
+16. **NUMBER.OF.MOTORIST.KILLED** Number of Motorist Killed in the crash
+17. **VEHICLE.CATEGORY** 17 vehicle category
+17. **POPULATION** Population of the crash area
+18. **AREA** Area size where the crash happened
+19. **COUNTY** County where the crash happened in NYC (5 Unique values)
+
+
+```{r}
+# Clear variables in memory
+rm(list=ls())
+
+# Load required libraries
+library(zoo)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+
+# Reading the data
+data <- read.csv("~/Majed AlOtaibi/University/Master/Courses/MGT6203/Project/Data/crashes-cleaned.csv", header=TRUE)
+```
+
+```{r}
+# summary of the data
+summary(data)
+str(data)
+```
+## Varibale Exploration & Selection
+
+```{r}
+# Extract the hours as new feature
+data$HOUR <- substr(data$CRASH.DATETIME, 12, 13)
+
+# Convert to categorical variables
+data$TIME_OF_DAY <- as.factor(data$TIME_OF_DAY)
+data$PO_NAME <- as.factor(data$PO_NAME) 
+data$ZIPCODE <- as.factor(data$ZIPCODE) 
+data$VEHICLE.CATEGORY <- as.factor(data$VEHICLE.CATEGORY) 
+data$COUNTY <- as.factor(data$COUNTY)
+data$HOUR <- as.factor(data$HOUR)
+#"%Y-%m-%d %H:%M:%S"
+data$CRASH_DATE <- strptime(as.character(data$CRASH.DATETIME), "%Y-%m-%d")
+data$CRASH_DATETIME <- strptime(as.character(data$CRASH.DATETIME), "%Y-%m-%d %H:%M:%S")
+
+
+# Remove unneeded columns
+data$COLLISION_ID <- NULL
+data$STATE <- NULL
+data$CRASH.DATETIME <- NULL
+data$LATITUDE <- NULL
+data$LONGITUDE <- NULL
+```
+
+
+```{r}
+# summary of the data
+summary(data)
+str(data)
+```
+
+
+## Split data
+
+Split the data into training and testing data sets
+
+```{r}
+# Split data for training and testing
+testRows <- sample(nrow(data),0.2*nrow(data))
+testData <- data[testRows, ]
+trainData <- data[-testRows, ]
+```
+
+
+```{r}
+daily_per_injured <- data %>% group_by(CRASH_DATE) %>%
+  summarise(daily_per_injured=sum(NUMBER.OF.PERSONS.INJURED, na.rm=TRUE)) %>%
+  filter(CRASH_DATE >= "2013-01-01" & CRASH_DATE <= "2022-12-31")
+#, sum(NUMBER.OF.PERSONS.KILLED), sum(NUMBER.OF.PEDESTRIANS.INJURED), sum(NUMBER.OF.PEDESTRIANS.KILLED), sum(NUMBER.OF.CYCLIST.INJURED),  sum(NUMBER.OF.CYCLIST.KILLED), sum(NUMBER.OF.MOTORIST.INJURED), sum=(NUMBER.OF.MOTORIST.KILLED)
+daily_per_injured[is.na(daily_per_injured)]
+
+#convert data frame to time series
+ts_zoo <- read.zoo(daily_per_injured)
+
+
+ts_monthly <- aggregate(ts_zoo, as.yearmon, sum)
+ts_monthly <- ts_monthly[-1,]
+
+
+ts <- ts(ts_monthly, start=c(2013,1), end=c(2022,12), frequency=12)
+
+plot(ts)
+
+ts_zoo_2013 <- window(ts_zoo, start = as.POSIXlt("2013-01-01 00:00:00"), end = as.POSIXlt("2013-12-31 00:00:00"))
+
+ts_2013_monthly <- aggregate(ts_zoo_2013, as.yearmon, sum)
+ts_2013_monthly <- ts_2013_monthly[-1,]
+
+ts_2013 <- ts(ts_2013_monthly, start=c(2013,1), frequency=12)
+
+d <- decompose(ts_2013)
+
+plot(d)
+
+model <- HoltWinters(ts_2013, seasonal="additive")
+
+plot(model)
+```
+
+# Trend & Seasonality analysis
+
+```{r}
+monthly_data <- data %>%
+    filter(CRASH_DATE >= "2013-01-01" & CRASH_DATE <= "2022-12-31") %>%
+  group_by(month = factor(as.character(month(CRASH_DATE, label = T, locale = Sys.setlocale("LC_TIME", "English"))),
+                            levels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec')),
+           year = year(CRASH_DATE)) %>%
+  summarise(monthly_per_injured=sum(NUMBER.OF.PERSONS.INJURED, na.rm=TRUE),
+            monthly_per_killed=sum(NUMBER.OF.PERSONS.KILLED, na.rm=TRUE),
+            monthly_ped_injured=sum(NUMBER.OF.PEDESTRIANS.INJURED, na.rm=TRUE),
+            monthly_ped_killed=sum(NUMBER.OF.PEDESTRIANS.KILLED, na.rm=TRUE),
+            monthly_cyc_injured=sum(NUMBER.OF.CYCLIST.INJURED, na.rm=TRUE),
+            monthly_cyc_killed=sum(NUMBER.OF.CYCLIST.KILLED, na.rm=TRUE),
+            monthly_mot_injured=sum(NUMBER.OF.MOTORIST.INJURED, na.rm=TRUE),
+            monthly_mot_killed=sum(NUMBER.OF.MOTORIST.KILLED, na.rm=TRUE),.groups = "keep")
+
+# Plot monthly persons injured
+ggplot(monthly_data, aes(x=month, y=monthly_per_injured, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Persons Injured')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Persons Injured per month" ,color = "year")
+
+# Plot monthly persons killed
+ggplot(monthly_data, aes(x=month, y=monthly_per_killed, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Persons Killed')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Persons Killed per month" ,color = "year")
+
+
+
+
+
+
+
+
+# Plot monthly Pedestrians injured
+ggplot(monthly_data, aes(x=month, y=monthly_ped_injured, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Pedestrians Injured')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Pedestrians Injured per month" ,color = "year")
+
+# Plot monthly Pedestrians killed
+ggplot(monthly_data, aes(x=month, y=monthly_ped_killed, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Pedestrians Killed')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Pedestrians Killed per month" ,color = "year")
+
+
+
+# Plot monthly Cyclist injured
+ggplot(monthly_data, aes(x=month, y=monthly_cyc_injured, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Cyclist Injured')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Cyclist Injured per month" ,color = "year")
+
+# Plot monthly Cyclist killed
+ggplot(monthly_data, aes(x=month, y=monthly_cyc_killed, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Cyclist Killed')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Cyclist Killed per month" ,color = "year")
+
+
+# Plot monthly monthly_mot_injured injured
+ggplot(monthly_data, aes(x=month, y=monthly_mot_injured, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Motorist Injured')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Motorist Injured per month" ,color = "year")
+
+# Plot monthly Motorist killed
+ggplot(monthly_data, aes(x=month, y=monthly_mot_killed, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Motorist Killed')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Motorist Killed per month" ,color = "year")
+#rm(list = ls())
+
+#data <- read.delim("~/Majed AlOtaibi/University/Master/Courses/ISYE6501/hw4/temps.txt")
+
+#t <-  as.vector(unlist(data[,2:21]))
+
+#ts <- ts(t, start=1996, frequency = 123)
+
+#ts
+
+#plot(ts)
+
+#model <- HoltWinters(ts, seasonal="multiplicative")
+
+#model$alpha
+#model$beta
+#model$gamma
+#model$coefficients
+
+#plot(model)
+
+#m_seasonal <- matrix(model$fitted[,4], nrow = 123)
+
+#se_data <- as.data.frame(m_seasonal) 
+
+#View(se_data)
+```
+

@@ -1,0 +1,349 @@
+---
+title: "Crashes Data Analysis"
+output: html_document
+date: "2023-07-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+The setup
+
+```{r init}
+
+library(pROC)
+library(car)
+
+nyc.collisions.weather.tod.final <- read.csv("~/Desktop/nyc-collisions-weather-tod-final.csv")
+df <- nyc.collisions.weather.tod.final
+
+df$IOD <- ifelse(df$INJURY == 1 | df$DEATH == 1, 1, 0)
+
+```
+
+Background: 
+
+From the original three datasets, the following characteristics were selected for:
+
+Complete data for all variables
+Only look at collisions involving two vehicles (vehicle 1 is denoted as _1, and vehicle 2 is denoted as _2)
+Only consider vehicles where the only occupant is the driver (that way we avoid the confounding effect that vehicles with multiple passengers are more likely to have injuries)
+Look at collisions involving vehicles belonging to a major class (e.g. no horse-drawn carriages)
+
+The Variables: 
+
+Driver Sex
+
+```{r Driver Sex}
+
+#Drop records without driver sex
+df <- df[df$DRIVER_SEX_1 %in% c("M", "F"),]
+df <- df[df$DRIVER_SEX_2 %in% c("M", "F"),]
+
+model_sex <- glm(IOD ~ DRIVER_SEX_1 + DRIVER_SEX_2 + DRIVER_SEX_1:DRIVER_SEX_2,family=binomial(link='logit'),data=df)
+
+summary(model_sex)
+
+df$IOD.Pred <- predict(model_sex,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Sex is predictive at a high degree of confidence. Males have a lower risk of IOD than females, and the effect is the same for both drivers in the crash. It should be mentioned that this does not imply that women are worse or more dangerous drivers, just that they are more likely to suffer IOD in the event of a collision. (Or, rather, that an IOD is more likely to occur in a collision involving a woman driver or two women drivers). 
+
+Driver Age
+
+```{r Age}
+
+#Kicking out records with ages outside of a reasonable range
+
+df <- df[df$DRIVER_AGE_1 >= 11,]
+df <- df[df$DRIVER_AGE_1 <= 110,]
+df <- df[df$DRIVER_AGE_2 <= 110,]
+df <- df[df$DRIVER_AGE_2 >= 11,]
+
+model_age <- glm(IOD ~ poly(DRIVER_AGE_1,2) + poly(DRIVER_AGE_2^2,2) + DRIVER_AGE_1:DRIVER_AGE_2,family=binomial(link='logit'),data=df)
+
+summary(model_age)
+
+df$IOD.Pred <- predict(model_age,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+
+```
+
+Looking at the relationship between age and injury propensity, you see a curve that sharply decreases up to a minimum of around 75-80 (possibly due to driver experience and overally maturity), and then begins to increase again (possibly due to physical frailty and the degredation of cognitive abilities). I have modelled this relationship with a second-order polynomial. 
+
+Licensing
+
+```{r Licensing}
+
+
+df$licensed_1 <- 0
+df$licensed_2 <- 0
+df$licensed_1[(df$DRIVER_LICENSE_STATUS_1 == 'Licensed')] <- 1
+df$licensed_2[(df$DRIVER_LICENSE_STATUS_2 == 'Licensed')] <- 1
+
+
+model_lic <- glm(IOD ~ licensed_1 + licensed_2 + licensed_1:licensed_2,family=binomial(link='logit'),data=df)
+
+summary(model_lic)
+
+df$IOD.Pred <- predict(model_lic,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Interesting. Licensing is barely significant when included as a variable by itself, but (spoiler) it becomes very relevant when included in the multi-variable model. This could be because there are so few collisions that involved unlicensed or permitted drivers. I'll come back to this later. 
+
+In-state Licensing
+
+```{r Instate Licensing}
+
+df$instate_lic_1 <- 0
+df$instate_lic_2 <- 0
+df$instate_lic_2[(df$DRIVER_LICENSE_JURISDICTION_2 == 'NY')] <- 1
+df$instate_lic_1[(df$DRIVER_LICENSE_JURISDICTION_1 == 'NY')] <- 1
+
+model_instate <- glm(IOD ~ instate_lic_1 + instate_lic_2 + instate_lic_1:instate_lic_2,family=binomial(link='logit'),data=df)
+
+summary(model_instate)
+
+df$IOD.Pred <- predict(model_instate,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Very odd finding that in-state drivers are actually slightly *more* likely to be injured in an accident than out-of-state drivers. One possible explanation is that people in NYC don't actually drive that much. The interaction term is also strange, indicating that the risk of IOD is lowered when there is a collision between two in-state drivers. No idea what's going on here - let's keep this in mind for the variable consolidation step. 
+
+Cleaning Up Car Make
+
+```{r Car Make Clean}
+
+df$VM_1 <- substring(tolower(df$VEHICLE_MAKE_1),1,4)
+df$VM_2 <- substring(tolower(df$VEHICLE_MAKE_2),1,4)
+
+df$VM_1[grepl("kia",df$VM_1) == TRUE] <- "kia"
+df$VM_1[grepl("bmw",df$VM_1) == TRUE] <- "bmw"
+df$VM_1[grepl("isu",df$VM_1) == TRUE] <- "isuz"
+
+df$VM_2[grepl("kia",df$VM_2) == TRUE] <- "kia"
+df$VM_2[grepl("bmw",df$VM_2) == TRUE] <- "bmw"
+df$VM_2[grepl("isu",df$VM_2) == TRUE] <- "isuz"
+
+car_make_keeps <- c( 'toyt',  'hond',  'niss',  'ford',  'chev',  'hyun',  'merz',  'jeep',   'bmw',  'dodg',  'lexs',  'acur',  'infi',  'volk',  'suba',  'chry',   'kia',  'gmc',   'linc',  'audi',  'mazd') 
+
+df$VM_1[!(df$VM_1 %in% car_make_keeps)] <- 'allo'
+df$VM_2[!(df$VM_2 %in% car_make_keeps)] <- 'allo'
+
+#model_car_make1 <- glm(IOD ~ VM_1,family=binomial(link='logit'),data=df)
+#model_car_make2 <- glm(IOD ~ VM_2,family=binomial(link='logit'),data=df)
+
+#summary(model_car_make1)
+#summary(model_car_make2)
+
+#df$IOD.Pred <- predict(model_car_make,newdata=df,type='response')
+
+#roc.test <- roc(df$IOD, df$IOD.Pred )
+
+#plot(roc.test, print.auc = TRUE)
+
+```
+
+
+
+Car Safety
+
+```{r Car Make}
+
+model_car_make1 <- glm(IOD ~ VM_1,family=binomial(link='logit'),data=df)
+model_car_make2 <- glm(IOD ~ VM_2,family=binomial(link='logit'),data=df)
+
+summary(model_car_make1)
+summary(model_car_make2)
+
+
+#df$IOD.Pred <- predict(model_car_make,newdata=df,type='response')
+
+#roc.test <- roc(df$IOD, df$IOD.Pred )
+
+#plot(roc.test, print.auc = TRUE)
+
+```
+
+As you can tell from the summary data, some car makes appear to be less frequently associated with injuries than others. In the VM_1 dataset, the makes that are statistically-significantly associated with IOD reduction are toyota, volvo, audi, ford, lexus (close enough), subaru, mercedes-benz, and chevrolet. I included Land Rover initially for some weird reason initially but I think I'm going to take it out on the second run. These cars are also significantly safer in the VM_2 field, indicating that the relationship is unlikely due to overfitting. It is also worth noting that makes that are made by the same company (e.g. Toyota/Lexus, Honda/Acura, Nissan/Infiniti, Dodge/Chrysler, etc.) tend to have coefficients pointing in the same direction. 
+
+I do wonder to what extent brand safety is a proxy for car size or driver responsibility, but we do include the type of car (sedan vs SUV) and the vehicle weight, and the brand is still a statistically-significant variable. Whether the brand is statistically significant compared to driver responsibility is hard to answer - most drivers get to choose the car that their driving. An exception to this case is taxi drivers, who (typically) have to drive whatever car the taxi company is willing to lease them. Unfortunately, it isn't clear if we have enough data to perform this analysis. Maybe another time ... 
+
+```{r Car Make 2}
+
+safe_cars_final <- c("toyt", "volv", "ford", "audi", "lexs", "suba", "merz", "chev")  
+
+df$safe_1 <- 0
+df$safe_2 <- 0
+df$safe_1[(df$VM_1 %in% safe_cars_final)] <- 1
+df$safe_2[(df$VM_2 %in% safe_cars_final)] <- 1
+
+
+model_car_safe <- glm(IOD ~ safe_1 + safe_2 + safe_1:safe_2,family=binomial(link='logit'),data=df)
+
+summary(model_car_safe)
+
+df$IOD.Pred <- predict(model_car_safe,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+```{r TOD}
+
+df$CRASH_TIME_OF_DAY <- relevel(as.factor(df$CRASH_TIME_OF_DAY),"Day")
+
+model_TOD <- glm(IOD ~ CRASH_TIME_OF_DAY ,family=binomial(link='logit'),data=df)
+
+summary(model_TOD)
+
+df$IOD.Pred <- predict(model_TOD,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Not surprisingly, collisions that occur during periods where there is less light tend to be more severe and are more likely to produce an injury or a death. In the case of this model, driving at night (as opposed to during the day) increases the log odds of injury/death by 0.31, which is equivalent to increasing the odds of a severe collision by e^0.31, or increasing the odds by 31%. A possible explanation is that reduced visibility at night reduces the amount of time available to react to a potential collision. It is also worth considering the possibility that people are more likely to be drunk at nighttime. (Unfortunately, we don't have the data to test this hypothesis.)
+
+
+```{r UV}
+
+model_uv <- glm(IOD ~ uvindex ,family=binomial(link='logit'),data=df)
+
+summary(model_uv)
+
+df$IOD.Pred <- predict(model_uv,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Unfortunately, we cannot include UV index because it contains too many N/A values. Also, it would be heavily aliased with the time-of-day variable.
+
+
+```{r Density}
+
+df$DENSITY <- df$POPULATION / df$AREA
+
+model_density <- glm(IOD ~ DENSITY ,family=binomial(link='logit'),data=df)
+
+summary(model_density)
+
+df$IOD.Pred <- predict(model_density,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Zip code population density is a statistically-significant variable. It is much easier to drive faster in less dense areas, and you'll probably see larger sections of highway. In reality, this variable is probably just a proxy for whether or not the accident occured in Staten Island. 
+
+```{r Season}
+
+df$CRASH_SEASON <- relevel(as.factor(df$CRASH_SEASON),"Winter")
+
+
+model_season <- glm(IOD ~ CRASH_SEASON ,family=binomial(link='logit'),data=df)
+
+summary(model_season)
+
+df$IOD.Pred <- predict(model_season,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Risk for severe collisions is highest in the summer. Why? Who knows? Faster driving, more drinking, and more motorcycles and bicycles. (As Majed pointed out, not many New Yorkers ride bicycles in the winter.)
+
+
+```{r Weight}
+
+df$W_DIFF <- abs(df$VEHICLE_WEIGHT_1 - df$VEHICLE_WEIGHT_2)
+
+model_weight <- glm(IOD ~ log(VEHICLE_WEIGHT_1) + log(VEHICLE_WEIGHT_2) +  + W_DIFF ,family=binomial(link='logit'),data=df)
+
+summary(model_weight)
+
+df$IOD.Pred <- predict(model_weight,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+Vehicle Weight was calculated through the extremely-scientific process of asking Google how much a particular type of vehicle weighs. There is a clear relationship between the weight of a vehicle and the risk of injury in an accident, and the relationship becomes stronger when you take the log of the weight. I was hoping to find a relationship between the weight differential between two vehicles but there isn't really much of a relationship. 
+
+```{r weather}
+
+
+model_weath <- glm(IOD ~ feelslike + precipprob + windspeed,family=binomial(link='logit'),data=df)
+
+summary(model_weath)
+
+df$IOD.Pred <- predict(model_weath,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+```
+
+
+Precipitation: This is a weird one - accidents that occur while it's raining are actually less likely to be severe than when the weather is nice. At first I was thinking that people might drive more carefully in the rain, but then I came to my senses and realized that it's probably because there aren't as many people on motorcycles and bicycles. Perceived temperature probably has the opposite effect. The relationship between windspeed seems self-evident. 
+
+```{r current model}
+
+
+model_fin <- glm(IOD ~ DRIVER_SEX_1 + DRIVER_SEX_2 + poly(DRIVER_AGE_1,2) + poly(DRIVER_AGE_2,2) + licensed_1 + licensed_2 + instate_lic_1 + instate_lic_2 + safe_1 + safe_2 + DENSITY + feelslike + precipprob + windspeed + CRASH_TIME_OF_DAY + log(VEHICLE_WEIGHT_1) + log(VEHICLE_WEIGHT_2) +  CRASH_SEASON,family=binomial(link='logit'),data=df)
+
+summary(model_fin)
+
+df$IOD.Pred <- predict(model_fin,newdata=df,type='response')
+
+roc.test <- roc(df$IOD, df$IOD.Pred )
+
+plot(roc.test, print.auc = TRUE)
+
+vif(model_fin)
+
+```
+
+Interesting variables that weren't useful:
+
+Car age: I would have thought that older cars would be more likely to be involved in severe accidents due to the lack of new technologies such as airbags. But it wasn't the case. 
+
+Weight differential: See description above. As a general rule, accidents with heavier vehicles are less likely to involve injuries.
+
+Visibility: No relationship 
+
+

@@ -1,0 +1,233 @@
+---
+title: "MGT6203 Project - Trend & Seasonality Analysis"
+author: "Majed AlOtaibi"
+date: "7/15/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Road traffic crashes are a leading cause of death in many countries, especially those with people living in high-population density environments. In this project, due to data availability issues, we will be focusing on the city of New York City in the United States
+
+## Data Description & Pre-processing
+
+This work is a compiled result of cleaning and using the following data sets:
+1. Crashes dataset.
+2. Vehicles dataset
+3. Persons dataset
+4. New York city spatial dataset
+5. New York city weather dataset
+
+The cleaned dataset has the following columns:
+
+1. **COLLISION_ID** Auto generated ID for the crash
+2. **CRASH.DATETIME** Crash Date and Time
+3. **TIME_OF_DAY** Time of Day (morning, afternoon, or evening)
+4. **STATE** All the data set records in NY
+5. **PO_NAME** Postal Name (48 unique values in NY)
+6. **ZIPCODE** ZIP Code (193 unique values in NY)
+7. **LATITUDE** Latitude of the crash
+8. **LONGITUDE** Longitude of the crash
+9. **NUMBER.OF.PERSONS.INJURED** Number of Persons Injured in the crash
+10. **NUMBER.OF.PERSONS.KILLED** Number of Persons Killed in the crash
+11. **NUMBER.OF.PEDESTRIANS.INJURED** Number of Pedestrians Injured in the crash
+12. **NUMBER.OF.PEDESTRIANS.KILLED** Number of Pedestrians Killed in the crash
+13. **NUMBER.OF.CYCLIST.INJURED** Number of Cyclist Injured in the crash
+14. **NUMBER.OF.CYCLIST.KILLED** Number of Cyclist Killed in the crash
+15. **NUMBER.OF.MOTORIST.INJURED** Number of Motorist Injured in the crash
+16. **NUMBER.OF.MOTORIST.KILLED** Number of Motorist Killed in the crash
+17. **VEHICLE.CATEGORY** 17 vehicle category
+17. **POPULATION** Population of the crash area
+18. **AREA** Area size where the crash happened
+19. **COUNTY** County where the crash happened in NYC (5 Unique values)
+
+In this part of the analysis, will focus on the crash date and try to find any trend or seasonal pattern using the following data columns:
+1. **NUMBER.OF.PERSONS.INJURED** Number of Persons Injured in the crash
+2. **NUMBER.OF.PERSONS.KILLED** Number of Persons Killed in the crash
+3. **NUMBER.OF.PEDESTRIANS.INJURED** Number of Pedestrians Injured in the crash
+4. **NUMBER.OF.PEDESTRIANS.KILLED** Number of Pedestrians Killed in the crash
+5. **NUMBER.OF.CYCLIST.INJURED** Number of Cyclist Injured in the crash
+6. **NUMBER.OF.CYCLIST.KILLED** Number of Cyclist Killed in the crash
+7. **NUMBER.OF.MOTORIST.INJURED** Number of Motorist Injured in the crash
+8. **NUMBER.OF.MOTORIST.KILLED** Number of Motorist Killed in the crash
+
+```{r}
+# Clear variables in memory
+rm(list=ls())
+
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+
+# Reading the data
+data <- read.csv("~/Majed AlOtaibi/University/Master/Courses/MGT6203/Project/Data/crashes-cleaned.csv", header=TRUE)
+```
+
+## Crash Date Varibale processing
+
+```{r}
+data$CRASH_DATE <- as.Date(strptime(as.character(data$CRASH.DATETIME), "%Y-%m-%d"))
+# Remove unneeded columns
+data$COLLISION_ID <- NULL
+data$STATE <- NULL
+data$CRASH.DATETIME <- NULL
+data$LATITUDE <- NULL
+data$LONGITUDE <- NULL
+data$TIME_OF_DAY <- NULL
+data$PO_NAME <- NULL
+data$ZIPCODE <- NULL
+data$VEHICLE.CATEGORY <- NULL
+data$COUNTY <- NULL
+data$POPULATION <- NULL
+data$AREA <- NULL
+
+head(data)
+```
+
+# Prepare the total monthly numbers grouped by Year
+
+```{r}
+monthly_data <- data %>%
+    filter(CRASH_DATE >= "2013-01-01" & CRASH_DATE <= "2022-12-31") %>%
+  group_by(month = factor(as.character(month(CRASH_DATE, label = T, locale = Sys.setlocale("LC_TIME", "English"))),
+                            levels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec')),
+           year = year(CRASH_DATE)) %>%
+  summarise(monthly_per_injured=sum(NUMBER.OF.PERSONS.INJURED, na.rm=TRUE),
+            monthly_per_killed=sum(NUMBER.OF.PERSONS.KILLED, na.rm=TRUE),
+            monthly_ped_injured=sum(NUMBER.OF.PEDESTRIANS.INJURED, na.rm=TRUE),
+            monthly_ped_killed=sum(NUMBER.OF.PEDESTRIANS.KILLED, na.rm=TRUE),
+            monthly_cyc_injured=sum(NUMBER.OF.CYCLIST.INJURED, na.rm=TRUE),
+            monthly_cyc_killed=sum(NUMBER.OF.CYCLIST.KILLED, na.rm=TRUE),
+            monthly_mot_injured=sum(NUMBER.OF.MOTORIST.INJURED, na.rm=TRUE),
+            monthly_mot_killed=sum(NUMBER.OF.MOTORIST.KILLED, na.rm=TRUE),.groups = "keep")
+
+head(monthly_data)
+```
+
+
+# Trend & Seasonality analysis
+
+## 1. Monthly persons injured
+
+```{r}
+ggplot(monthly_data, aes(x=month, y=monthly_per_injured, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Persons Injured')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Persons Injured per month" ,color = "year")
+```
+
+The total number of persons injured in a crash in beginning of the year (Jan-April) is lower than later months in the year.
+
+## 2. Monthly persons killed
+
+```{r}
+ggplot(monthly_data, aes(x=month, y=monthly_per_killed, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Persons Killed')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Persons Killed per month" ,color = "year")
+```
+
+There is no clear pattern in monthly total number of Persons death in crash.
+
+## 3. Monthly Pedestrians injured
+```{r}
+ggplot(monthly_data, aes(x=month, y=monthly_ped_injured, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Pedestrians Injured')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Pedestrians Injured per month" ,color = "year")
+```
+
+The total number of Pedestrians injured in a crash in mid of the year (April-Aug) is lower than beginning and end in the year.
+
+## 4. Monthly Pedestrians killed
+```{r}
+# Plot monthly Pedestrians killed
+ggplot(monthly_data, aes(x=month, y=monthly_ped_killed, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Pedestrians Killed')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Pedestrians Killed per month" ,color = "year")
+```
+
+There is no clear pattern in monthly total number of Pedestrians death in crash.
+
+## 5. Monthly Cyclist injured
+```{r}
+# Plot monthly Cyclist injured
+ggplot(monthly_data, aes(x=month, y=monthly_cyc_injured, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Cyclist Injured')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Cyclist Injured per month" ,color = "year")
+```
+
+Simillary to the monthly Total Persons Injured, The total number of Cyclist injured in a crash in beginning and end of the year (Jan-April) and (Nov-Dec) is lower than mid year months.
+
+## 6. Monthly Cyclist killed
+```{r}
+# Plot monthly Cyclist killed
+ggplot(monthly_data, aes(x=month, y=monthly_cyc_killed, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Cyclist Killed')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Cyclist Killed per month" ,color = "year")
+```
+
+The total number of Cyclist killed is kind of following The total number of Cyclist injured where it's high towards the mid of the year.
+
+## 7. Monthly Motorist injured
+```{r}
+# Plot monthly Motorist injured
+ggplot(monthly_data, aes(x=month, y=monthly_mot_injured, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Motorist Injured')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Motorist Injured per month" ,color = "year")
+```
+
+The total number of Motorist injured in a crash in beginning of the year (Jan-April) is lower than later months in the year.
+
+## 8. Monthly Motorist killed
+```{r}
+# Plot monthly Motorist killed
+ggplot(monthly_data, aes(x=month, y=monthly_mot_killed, color=as.factor(year), group = year)) +
+geom_line()   + 
+  scale_color_manual(values=c("#FF0000", "#00FF00", "#0000FF","#FFFF00","#00FFFF","#FF00FF","#800080","#008000","#808000","#008080"))+
+  theme(legend.position="top")+
+ylab('Total Motorist Killed')   +
+xlab('Month') + 
+theme_light() +
+labs(title="Total Motorist Killed per month" ,color = "year")
+```
+
+Similar to The total number of Motorist injured, the total number of Motorist killed in a crash in beginning of the year (Jan-April) is lower than later months in the year.
